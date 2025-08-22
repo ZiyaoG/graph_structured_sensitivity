@@ -3,7 +3,7 @@
 clear; close all;
 
 %% PARAMETERS
-T_sim   = 31;         % Total sim steps
+T_sim   = 65;         % Total sim steps
 Np_max  = 1;          % Max MPC horizon to test
 x0      = 0;           % Initial state
 % xi_full = repmat(4/5, T_sim, 1);
@@ -83,8 +83,8 @@ for Np = 1:Np_max
 end
 
 %% FULL-HORIZON OPT 
-% options = sdpsettings('solver','gurobi','debug',1,'verbose',1); % for debugging
-options = sdpsettings('solver','quadprog','verbose',0);
+options = sdpsettings('solver','gurobi','debug',0,'verbose',0); % for debugging
+% options = sdpsettings('solver','quadprog','verbose',0);
 
 x_opt    = sdpvar(T_sim,1);
 cons_opt = [];
@@ -113,7 +113,7 @@ cost_opt = value(obj_opt);
 plot(1:T_sim-1, abs(diff(value(x_opt))),'-o')
 value(x_opt)
 
-
+return;
 %% PLOT REGRET
 horizons = (1:Np_max)'; 
 regret = cost_mpc - cost_opt;
