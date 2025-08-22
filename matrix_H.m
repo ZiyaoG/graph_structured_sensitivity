@@ -1,7 +1,7 @@
 clear; 
 close all;
 
-T_list = 23:2:67;
+T_list = 31;   % 23:2:65
 sigma_opt = [];
 for T=T_list
     %% build full constraint jacobian for OPT 
@@ -66,7 +66,9 @@ for T=T_list
 
 
 end
-% plot how singular value changes with respect to horizon length
+%% plot 
+
+% singular value changes with respect to horizon length
 figure;
 plot(T_list, sigma_opt, 'o-', 'LineWidth', 1.5, 'MarkerSize', 6);
 
@@ -75,10 +77,25 @@ ylabel('Smallest singular value');
 title('Smallest singular value vs Horizon length');
 grid on;
 
+% matrix H
+figure;
 
+% Copy H, replace zeros with NaN so they won't be colored
+H_masked = H;
+H_masked(H_masked == 0) = NaN;
 
+% Plot masked matrix
+imagesc(H_masked, 'AlphaData', ~isnan(H_masked));
 
+% Colormap and colorbar
+colormap(jet);
+colorbar;
 
+xlabel('Column index');
+ylabel('Row index');
+title('Matrix H (zeros in white)');
+
+grid on
 
 
 return;
