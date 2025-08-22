@@ -66,7 +66,15 @@ for T=T_list
 
 
 end
-plot(T_list,sigma_opt);
+% plot how singular value changes with respect to horizon length
+figure;
+plot(T_list, sigma_opt, 'o-', 'LineWidth', 1.5, 'MarkerSize', 6);
+
+xlabel('Horizon length T');
+ylabel('Smallest singular value');
+title('Smallest singular value vs Horizon length');
+grid on;
+
 
 
 
