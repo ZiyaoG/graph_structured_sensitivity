@@ -10,9 +10,9 @@ for N=N_list
     for t = 1:N
         i0 = 4*(t-1);
         % state-upper:   x_t - 1 <= 0  ⟹ grad =  e_t
-        J_full(i0+1, t) =  1;
+        % J_full(i0+1, t) =  1;
         % state-lower:  -x_t - 1 <= 0  ⟹ grad = -e_t
-        J_full(i0+2, t) = -1;
+        % J_full(i0+2, t) = -1;
         % control-upper: x_t - x_{t-1} -4/5 <=0
         if t==1
             % x(0)=0 ⇒ grad wrt x1 is +1

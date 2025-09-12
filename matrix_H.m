@@ -1,7 +1,7 @@
 clear; 
 close all;
 
-T_list = 31;   % 23:2:65
+T_list = 23:2:65;   % 23:2:65
 sigma_opt = [];
 for T=T_list
     %% build full constraint jacobian for OPT 
@@ -72,7 +72,7 @@ end
 figure;
 plot(T_list, sigma_opt, 'o-', 'LineWidth', 1.5, 'MarkerSize', 6);
 
-xlabel('Horizon length T');
+xlabel('Horizon length N');
 ylabel('Smallest singular value');
 title('Smallest singular value vs Horizon length');
 grid on;

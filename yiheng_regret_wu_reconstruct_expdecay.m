@@ -3,9 +3,10 @@
 clear; close all;
 
 %% PARAMETERS
-T_sim   = 65;         % Total sim steps
-Np_max  = 1;          % Max MPC horizon to test
+T_sim   = 500;         % Total sim steps
+Np_max  = 50;          % Max MPC horizon to test
 x0      = 0;           % Initial state
+R       = 0.01;
 % xi_full = repmat(4/5, T_sim, 1);
 % xi_full(2:2:end) = -4/5;
 xlim = 1e3;   % never reached
@@ -21,7 +22,38 @@ options = sdpsettings('solver','gurobi','verbose',0);
 %     'gurobi.Method', 1);   % 0=primal simplex, 1=dual simplex, 2=barrier    
 
 
+%% FULL-HORIZON OPT 
+% options = sdpsettings('solver','gurobi','debug',0,'verbose',0); % for debugging
+options = sdpsettings('solver','quadprog','verbose',0);
 
+x_opt    = sdpvar(T_sim,1);
+cons_opt = [];
+obj_opt  = 0;
+for t = 1:T_sim
+    obj_opt = obj_opt + (x_opt(t)-xi_full(t))^2;
+    
+    if t==1
+        obj_opt = obj_opt + u_flag*(x_opt(1)-x0)^2;
+        cons_opt = [cons_opt, x_opt(1)-x0 <= ulim, x0-x_opt(1) <= ulim];
+    else
+        obj_opt = obj_opt + u_flag*(x_opt(t)-x_opt(t-1))^2;
+        cons_opt = [cons_opt, x_opt(t)-x_opt(t-1) <= ulim, ...
+                             x_opt(t-1)-x_opt(t) <= ulim];
+    end
+    cons_opt = [cons_opt, -xlim <= x_opt(t) <= xlim];
+end
+% obj_opt  = obj_opt + x_opt(T_sim+1)^2 + (x_opt(T_sim+1)-x_opt(T_sim))^2;
+opt_sol = optimize(cons_opt, obj_opt, options);
+if opt_sol.problem
+    error('FULL-OPT failed with Gurobi: %s', yalmiperror(opt_sol.problem));
+end
+cost_opt = value(obj_opt);
+
+%% debug - to study the behavior of full horizon optimization
+% plot(1:T_sim-1, abs(diff(value(x_opt))),'-o')
+x_opt_value=value(x_opt);
+
+% return;
 
 %% PRE-BUILD OPTIMIZERS FOR ALL HORIZONS h=1..Np_max
 F_all = cell(Np_max,1);
@@ -45,10 +77,11 @@ for h = 1:Np_max
     end
 
     % --- terminal cost & bound ---
-    obj  = obj + x_seq(h+1)^2 + (x_seq(h+1)-x_seq(h))^2; % terminal state + terminal move
+    % obj  = obj + x_seq(h+1)^2 + (x_seq(h+1)-x_seq(h))^2; % terminal state + terminal move
     % cons = [cons, -xlim <= x_seq(h+1) <= xlim];           % also bound terminal state and move
-    cons = [cons, x_seq(h+1)-x_seq(h) <= ulim, x_seq(h)-x_seq(h+1) <= ulim];           % also bound terminal state and move
+    % cons = [cons, x_seq(h+1)-x_seq(h) <= ulim, x_seq(h)-x_seq(h+1) <= ulim];           % also bound terminal state and move
 
+    cons = [cons, x_opt_value(h+1)-R<=x_seq(h+1) <= x_opt_value(h+1)+R];
     F_all{h} = optimizer(cons, obj, options, [p0; p_xi], x_seq);
 end
 
@@ -82,38 +115,7 @@ for Np = 1:Np_max
     cost_mpc(Np) = sum(tracking_err.^2) + u_flag*sum(control_eff.^2);
 end
 
-%% FULL-HORIZON OPT 
-options = sdpsettings('solver','gurobi','debug',0,'verbose',0); % for debugging
-% options = sdpsettings('solver','quadprog','verbose',0);
 
-x_opt    = sdpvar(T_sim,1);
-cons_opt = [];
-obj_opt  = 0;
-for t = 1:T_sim
-    obj_opt = obj_opt + (x_opt(t)-xi_full(t))^2;
-    
-    if t==1
-        obj_opt = obj_opt + u_flag*(x_opt(1)-x0)^2;
-        cons_opt = [cons_opt, x_opt(1)-x0 <= ulim, x0-x_opt(1) <= ulim];
-    else
-        obj_opt = obj_opt + u_flag*(x_opt(t)-x_opt(t-1))^2;
-        cons_opt = [cons_opt, x_opt(t)-x_opt(t-1) <= ulim, ...
-                             x_opt(t-1)-x_opt(t) <= ulim];
-    end
-    cons_opt = [cons_opt, -xlim <= x_opt(t) <= xlim];
-end
-% obj_opt  = obj_opt + x_opt(T_sim+1)^2 + (x_opt(T_sim+1)-x_opt(T_sim))^2;
-opt_sol = optimize(cons_opt, obj_opt, options);
-if opt_sol.problem
-    error('FULL-OPT failed with Gurobi: %s', yalmiperror(opt_sol.problem));
-end
-cost_opt = value(obj_opt);
-
-%% debug - to study the behavior of full horizon optimization
-plot(1:T_sim-1, abs(diff(value(x_opt))),'-o')
-value(x_opt)
-
-return;
 %% PLOT REGRET
 horizons = (1:Np_max)'; 
 regret = cost_mpc - cost_opt;
