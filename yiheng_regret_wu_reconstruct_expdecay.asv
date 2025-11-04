@@ -4,18 +4,18 @@ clear; close all;
 
 %% PARAMETERS
 T_sim   = 500;         % Total sim steps
-Np_max  = 30;          % Max MPC horizon to test
+Np_max  = 50;          % Max MPC horizon to test
 x0      = 0;           % Initial state
 R       = 0.01;
 % xi_full = repmat(4/5, T_sim, 1);
 % xi_full(2:2:end) = -4/5;
-xlim = 1e0;   % never reached
+xlim = 1e3;   % never reached
 ulim = 4/5;
-xi = 4/5;
+xi = 10;
 xi_full = repmat(xi, T_sim, 1);
 xi_full(2:2:end) = -xi;
 
-u_flag=0;
+u_flag=1;
 
 options = sdpsettings('solver','gurobi','verbose',0);
 % options = sdpsettings('solver','gurobi','verbose',0, ...
@@ -24,7 +24,7 @@ options = sdpsettings('solver','gurobi','verbose',0);
 
 %% FULL-HORIZON OPT 
 % options = sdpsettings('solver','gurobi','debug',0,'verbose',0); % for debugging
-options = sdpsettings('solver','gurobi','verbose',0);
+options = sdpsettings('solver','quadprog','verbose',0);
 
 x_opt    = sdpvar(T_sim,1);
 cons_opt = [];
@@ -76,7 +76,12 @@ for h = 1:Np_max
         cons = [cons, -xlim <= x_seq(t) <= xlim];   % state bounds for 1..h
     end
 
-    % cons = [cons, x_opt_value(h+1)-R<=x_seq(h+1) <= x_opt_value(h+1)+R];
+    % --- terminal cost & bound ---
+    % obj  = obj + x_seq(h+1)^2 + (x_seq(h+1)-x_seq(h))^2; % terminal state + terminal move
+    % cons = [cons, -xlim <= x_seq(h+1) <= xlim];           % also bound terminal state and move
+    % cons = [cons, x_seq(h+1)-x_seq(h) <= ulim, x_seq(h)-x_seq(h+1) <= ulim];           % also bound terminal state and move
+
+    cons = [cons, x_opt_value(h+1)-R<=x_seq(h+1) <= x_opt_value(h+1)+R];
     F_all{h} = optimizer(cons, obj, options, [p0; p_xi], x_seq);
 end
 
