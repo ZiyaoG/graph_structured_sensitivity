@@ -70,7 +70,9 @@ end
 
 % singular value changes with respect to horizon length
 figure;
-plot(T_list, sigma_opt, 'o-', 'LineWidth', 1.5, 'MarkerSize', 6);
+% plot(T_list, sigma_opt, 'o-', 'LineWidth', 1.5, 'MarkerSize', 6);
+loglog(T_list, sigma_opt, 'o-', 'LineWidth', 1.5, 'MarkerSize', 6);
+
 
 xlabel('Horizon length N');
 ylabel('Smallest singular value');

@@ -1,15 +1,13 @@
-% Temporal MPC vs Full-Horizon OPT Regret Analysis
-% Including shrinking horizon at end of sim
 clear; close all;
 
 %% PARAMETERS
 T_sim   = 500;         % Total sim steps
 Np_max  = 30;          % Max MPC horizon to test
 x0      = 0;           % Initial state
-R       = 0.01;
+R       = 0.1;
 % xi_full = repmat(4/5, T_sim, 1);
 % xi_full(2:2:end) = -4/5;
-xlim = 1e0;   % never reached
+xlim = 1e1;   % never reached
 ulim = 4/5;
 xi = 4/5;
 xi_full = repmat(xi, T_sim, 1);
@@ -76,7 +74,11 @@ for h = 1:Np_max
         cons = [cons, -xlim <= x_seq(t) <= xlim];   % state bounds for 1..h
     end
 
-    % cons = [cons, x_opt_value(h+1)-R<=x_seq(h+1) <= x_opt_value(h+1)+R];
+    % --- NEW: couple the terminal state (t = h+1) to x(h) via move limit
+    obj  = obj + u_flag*(x_seq(h+1)-x_seq(h))^2;    % optional effort on last move
+    cons = [cons, x_seq(h+1)-x_seq(h) <= ulim, x_seq(h)-x_seq(h+1) <= ulim];
+
+    cons = [cons, x_opt_value(h+1)-R<=x_seq(h+1) <= x_opt_value(h+1)+R];
     F_all{h} = optimizer(cons, obj, options, [p0; p_xi], x_seq);
 end
 
