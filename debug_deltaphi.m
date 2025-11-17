@@ -1,18 +1,20 @@
 clear; close all;
 
 %% -------------------- PARAMETERS --------------------
-T_sim   = 1000;                          % total sim steps
-Np_list = [1 2 3 4 5 6 7 8 9 10 11 15 20 21 31 51 71 101 151];   % <-- choose any positive integers
+T_sim   = 500;                          % total sim steps
+Np_list = [1 2 3 4 5 6 7 8 9 10 11 15 20 21 31 51 ];   % <-- choose any positive integers
 Np_max  = max(Np_list);
 
 x0      = 0;            % initial state
 R       = 0.1;          % terminal tube radius
-xlim    = 1e0;          % never reached in practice
+xlim    = 1e4;          % never reached in practice
 ulim    = 4/5;          % move limit
 xi      = 4/5;          % alternating reference (+/- each step)
 u_flag  = 0;            % 1 adds move penalty, 0 constrain only
 
-
+% Build alternating reference long enough to support max horizon lookahead
+xi_full_ext = repmat(xi, T_sim + Np_max, 1);
+xi_full_ext(2:2:end) = -xi;
 % Remark: to make u consrtraint active at every step, you either make the referecne
 % has jumping signs, or very big. anyway, you want to make it never
 % reached, such that u constraint is always active. This is the way to
@@ -22,7 +24,7 @@ u_flag  = 0;            % 1 adds move penalty, 0 constrain only
 T_ext = T_sim + Np_max;
 r = 1.2 * ulim;                  % slope > u_max
 t_vec = (1:T_ext)';              
-xi_full_ext = r * t_vec;             % pure ramp
+xi_full = r * t_vec;             % pure ramp
 
 % YALMIP and Gurobi options
 options = sdpsettings('solver','gurobi','verbose',0,'cachesolvers',1);
@@ -101,10 +103,11 @@ end
 
 %% -------------------- SIMULATE (apply DEVIATED MPC) & COLLECT DATA --------------------
 % For each selected horizon Np, always solve with that horizon, no clipping.
-Xnorms     = cell(Np_max,1);    % bin by horizon, index with k=h
-DXt2norm   = cell(Np_max,1);
-DU_norm    = cell(Np_max,1);
-cost_mpc_dev = NaN(Np_max,1);   % unused horizons remain NaN
+Xnorms       = cell(Np_max,1);    % bin by horizon, index with k=h
+DXt2norm     = cell(Np_max,1);
+DU_norm      = cell(Np_max,1);
+TermDev      = cell(Np_max,1);    % NEW: terminal deviation |x_seq(h+1) - p_term|
+cost_mpc_dev = NaN(Np_max,1);     % unused horizons remain NaN
 
 for Np = Np_list(:)'
     x_sim = zeros(T_sim+1,1);
@@ -123,9 +126,7 @@ for Np = Np_list(:)'
         x_pred_dev = Fh_dev{[ x_sim(k); xi_pred; p_term_k ]};
         x_pred_exa = Fh_exa{[ x_sim(k); xi_pred; p_term_k ]};
 
-
-
-        % first move as input
+        % first move as input (here: position difference acts like "u")
         u_dev = x_pred_dev(1) - x_sim(k);
         u_exa = x_pred_exa(1) - x_sim(k);
 
@@ -134,9 +135,12 @@ for Np = Np_list(:)'
         x_term_exa = x_pred_exa(h+1);
 
         % collect samples into bin h
-        Xnorms{h}(end+1,1)     = abs(x_sim(k));
-        DXt2norm{h}(end+1,1)   = abs(x_term_dev - x_term_exa);
-        DU_norm{h}(end+1,1)    = abs(u_dev - u_exa);
+        Xnorms{h}(end+1,1)   = abs(x_sim(k));
+        DXt2norm{h}(end+1,1) = abs(x_term_dev - x_term_exa);
+        DU_norm{h}(end+1,1)  = abs(u_dev - u_exa);
+
+        % NEW: store terminal deviation from desired terminal state p_term_k
+        TermDev{h}(end+1,1) = abs(x_term_dev - p_term_k);
 
         % apply DEVIATED policy
         x_sim(k+1) = x_pred_dev(1);
@@ -172,14 +176,14 @@ kmax     = max(kk);
 
 valid = q2_sel > 0 & isfinite(q2_sel);
 
-% % ALL horizons fit
+% % ALL horizons fit (kept commented as before)
 % mask_all = valid & kk>=kmin_all & kk<=kmax;
 % if nnz(mask_all) >= 2
 %     p_all = polyfit(log(kk(mask_all)), log(q2_sel(mask_all)), 1);
 %     rho2_all = -p_all(1);
 %     A2_all   = exp(p_all(2));
 %     q2_fit_all = A2_all * kk.^(-rho2_all);
-% 
+%
 %     Y  = log(q2_sel(mask_all));  X = log(kk(mask_all));
 %     Yh = polyval(p_all, X);
 %     R2_all = 1 - sum((Y-Yh).^2)/sum((Y-mean(Y)).^2);
@@ -203,16 +207,12 @@ else
     rho2_odd = NaN; A2_odd = NaN; q2_fit_odd = NaN(size(kk)); R2_odd = NaN;
 end
 
-%% -------------------- PLOTS --------------------
+%% -------------------- PLOTS: q2(k) --------------------
 figure(1); clf
 loglog(kk, q2_sel, 'o','LineWidth',1.5); hold on
 % if ~isnan(A2_all), loglog(kk, q2_fit_all, '-','LineWidth',1.5); end
 if have_q2_odd,   loglog(kk, q2_fit_odd, '--','LineWidth',1.5); end
 
-% highlight fitted ranges
-% if nnz(mask_all)>0
-%     plot(kk(mask_all), q2_sel(mask_all), 'ko', 'MarkerFaceColor','k');
-% end
 if have_q2_odd
     plot(kk(mask_odd), q2_sel(mask_odd), 'ks', 'MarkerFaceColor',[.5 .5 .5]);
 end
@@ -224,18 +224,32 @@ if have_q2_odd
     legend('data','fit: odd','ODD fit pts','Location','best');
 else
     title(sprintf('q_2 fit: all k≥%d (R^2=%.3f) ~ %.3g k^{-%.3g}', ...
-        kmin_all, R2_all, A2_all, rho2_all));
+        kmin_all, R2_all, A2_all, R2_all));
     legend('data','fit: all','ALL fit pts','Location','best');
 end
 
+%% -------------------- Terminal deviation vs horizon --------------------
+termDev_mean = NaN(Np_max,1);
+termDev_max  = NaN(Np_max,1);
+
+for k = Np_list(:)'
+    d = TermDev{k};
+    if isempty(d), continue; end
+    termDev_mean(k) = mean(d);
+    termDev_max(k)  = max(d);
+end
+
+figure(2); clf
+loglog(kk, termDev_mean(kk), 'o-','LineWidth',1.5); hold on
+loglog(kk, termDev_max(kk),  's--','LineWidth',1.5);
+grid on
+xlabel('horizon k');
+ylabel('|x_{h+1} - p_{term}|');
+title('Terminal-state deviation vs horizon');
+legend('mean deviation','max deviation','Location','best');
+
 %% -------------------- Console summary --------------------
 fprintf('q2 LS power-law fits over chosen ranges (Np_list = [%s])\n', num2str(kk'));
-% if ~isnan(A2_all)
-%     fprintf('  all: k in [%d,%d]  =>  q2(k) ≈ %.4g * k^{-% .4g}  (R^2=%.3f)\n', ...
-%         max(kmin_all,min(kk)), max(kk), A2_all, rho2_all, R2_all);
-% else
-%     fprintf('  all: insufficient points in the chosen range\n');
-% end
 if have_q2_odd
     fprintf('  odd: k in [%d,%d]  =>  q2(k) ≈ %.4g * k^{-% .4g}  (R^2=%.3f)\n', ...
         max(kmin_odd,min(kk(odd_idx))), max(kk(odd_idx)), A2_odd, rho2_odd, R2_odd);

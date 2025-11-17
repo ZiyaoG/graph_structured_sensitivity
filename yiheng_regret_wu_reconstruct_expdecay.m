@@ -2,7 +2,7 @@ clear; close all;
 
 %% PARAMETERS
 T_sim   = 500;         % Total sim steps
-Np_max  = 30;          % Max MPC horizon to test
+Np_max  = 21;          % Max MPC horizon to test
 x0      = 0;           % Initial state
 R       = 0.1;
 % xi_full = repmat(4/5, T_sim, 1);
